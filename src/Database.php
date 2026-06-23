@@ -21,11 +21,18 @@ final class Database
             $_ENV['DB_CHARSET'] ?? 'utf8mb4'
         );
         try {
-            self::$pdo = new PDO($dsn, $_ENV['DB_USER'] ?? 'root', $_ENV['DB_PASS'] ?? '', [
+            $options = [
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
-            ]);
+            ];
+
+            // Enable SSL for Aiven (and other managed cloud databases)
+            if (filter_var($_ENV['DB_SSL'] ?? 'false', FILTER_VALIDATE_BOOLEAN)) {
+                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+            }
+
+            self::$pdo = new PDO($dsn, $_ENV['DB_USER'] ?? 'root', $_ENV['DB_PASS'] ?? '', $options);
             return self::$pdo;
         } catch (PDOException $e) {
             error_log('[DB] ' . $e->getMessage());
