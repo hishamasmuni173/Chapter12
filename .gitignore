@@ -1,6 +1,5 @@
 /vendor/
 /frontend/
-composer.lock
 .env
 .idea/
 .vscode/
