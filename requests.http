@@ -1,0 +1,100 @@
+### Books REST API — Chapter 12 (hardened)
+### Use VS Code "REST Client" or Postman.
+
+@host  = http://localhost:8000
+@token = eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJib29rcy1hcGkiLCJzdWIiOjEsImlhdCI6MTc4MTA2Mjg2MywiZXhwIjoxNzgxMDY2NDYzLCJyb2xlIjoiYWRtaW4iLCJlbWFpbCI6ImFkbWluQGJvb2tzLnRlc3QifQ.OTWDnqeps8UZr4Fxsm6Rw1lZANMOKwCLsiJut0Rd3Rs
+
+# ---------------------------------------------------------------
+# 1. Health — shows current security posture
+# ---------------------------------------------------------------
+GET {{host}}/
+
+# ---------------------------------------------------------------
+# 2. Login (rate-limited 5 / 60s by default)
+# ---------------------------------------------------------------
+
+### As admin
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "admin@books.test", "password": "password" }
+
+### As member
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "member@books.test", "password": "password" }
+
+### Wrong password — repeat 6 times to trigger 429 Too Many Requests
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "admin@books.test", "password": "wrong" }
+
+# ---------------------------------------------------------------
+# 3. XSS hygiene — JSON output is HEX-tag-encoded
+# ---------------------------------------------------------------
+
+### Try to store an XSS payload (allowed string, but rendered safely on output)
+POST {{host}}/api/books
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title":  "<script>alert('xss')</script>",
+  "author": "Attacker",
+  "year":   2024
+}
+
+### Read it back — observe < > in the JSON instead of < >
+GET {{host}}/api/books
+
+# ---------------------------------------------------------------
+# 4. IDOR — owner-or-admin only
+# ---------------------------------------------------------------
+
+### As member, try to update a book NOT created by you (expect 403)
+PUT {{host}}/api/books/1
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "title": "Hijacked" }
+
+### As admin, the same call succeeds (200)
+PUT {{host}}/api/books/1
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "genre": "Software Craftsmanship" }
+
+# ---------------------------------------------------------------
+# 5. Validation — server rejects bad inputs (400)
+# ---------------------------------------------------------------
+
+### Year out of range
+POST {{host}}/api/books
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "title": "Future Book", "author": "Time Traveller", "year": 9999 }
+
+### Title too long (> 200 chars)
+POST {{host}}/api/books
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "title": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "author": "Test", "year": 2024 }
+
+# ---------------------------------------------------------------
+# 6. CORS — only origins in CORS_ALLOWED_ORIGINS get credentials
+# ---------------------------------------------------------------
+
+### Pre-flight from an allowed origin
+OPTIONS {{host}}/api/books
+Origin: http://localhost:5173
+Access-Control-Request-Method: POST
+
+### Pre-flight from a hostile origin (no Allow-Origin set to it)
+OPTIONS {{host}}/api/books
+Origin: http://attacker.example
+Access-Control-Request-Method: POST
